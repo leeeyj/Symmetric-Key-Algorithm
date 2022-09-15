@@ -1,4 +1,4 @@
-#include "AES.h"
+#include "./AES.h"
 
 const uint8 SBox[256] = {
 	0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -18,6 +18,136 @@ const uint8 SBox[256] = {
 	0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
 	0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16 };
 
-void SubBytes(uint8 arr[]){
-    
+const uint8 RC[10] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36};
+
+void RotWord(uint8* t){
+	uint8 temp = t[0];
+	t[0] = t[1];
+	t[1] = t[2];
+	t[2] = t[3];
+	t[3] = temp;
+}
+
+void SubWord(uint8* t){
+	for(uint8 i = 0; i < 4; i++){t[i] = SBox[t[i]];}
+}
+
+void RotSubWord(uint8* t){
+	uint8 temp = t[0];
+	
+	t[0] = SBox[t[1]];
+	t[1] = SBox[t[2]];
+	t[2] = SBox[t[3]];
+	t[3] = SBox[temp];
+}
+
+uint8 xtime(uint8 a){
+	if (a >= 128){
+        a = (a << 1) ^ 0x1b; 
+        return a;
+    }
+
+	a = (a << 1);
+	return a;
+}
+
+uint8 m02(uint8 a){
+	return xtime(a);
+}
+
+uint8 m03(uint8 a){
+	uint8 b = a;
+	return m02(a) ^ b; 
+}
+
+void AddRoundKey(uint8* arr, uint8* key, uint8 Round){
+	for(uint8 i = 0; i < 16; i++){
+		arr[i] = arr[i] ^ key[Round*16 + i];
+	}
+}
+
+void SubBytes(uint8* arr){
+    for(uint8 i = 0 ; i < 16; i++){
+		arr[i] = SBox[arr[i]];
+	}
+}
+
+void ShiftRows(uint8* arr){
+	uint8 temp;
+
+	temp = arr[1];
+	arr[1] = arr[5];  arr[5] = arr[9];
+	arr[9] = arr[13]; arr[13] = temp;
+
+	temp = arr[2];
+	arr[2] = arr[10]; arr[10] = temp;
+	temp = arr[6];
+	arr[6] = arr[14]; arr[14] = temp; 
+
+	temp = arr[3];
+	arr[3] = arr[15]; arr[15] = arr[11];
+	arr[11] = arr[7]; arr[7] = temp;
+}
+
+void MixColumns(uint8* arr){
+	for(uint8 i = 0; i < 4; i++){
+		uint8 a = arr[i*4];   uint8 b = arr[i*4+1];
+		uint8 c = arr[i*4+2]; uint8 d = arr[i*4+3];
+		for(uint8 j = 0; j < 4; j++){
+			if(j == 0) arr[i*4+j] = m02(a) ^ m03(b) ^ c ^ d;
+			if(j == 1) arr[i*4+j] = a ^ m02(b) ^ m03(c) ^ d;
+			if(j == 2) arr[i*4+j] = a ^ b ^ m02(c) ^ m03(d);
+			if(j == 3) arr[i*4+j] = m03(a) ^ b ^ c ^ m02(d);
+		}
+	}
+}
+
+uint8* KeySchedule(uint8* key, uint8 size){	
+	uint8 Round;
+	uint8 t[4];
+	if(size == 16) Round = 10;
+	if(size == 24) Round = 12;
+	if(size == 32) Round = 14;
+	// if(size != 16 || size != 24 || size != 32){return NULL;}
+	uint8* RoundKey = (uint8*)calloc((Round+1)*16, sizeof(uint8));
+	if(RoundKey == NULL){printf("Memory Allocation Fail..\n"); return NULL;}
+	
+	for(uint8 i = 0; i < size; i++){RoundKey[i] = key[i];}
+
+	uint8 l = (uint8)(size / 4);
+	for(uint8 i = l; i < 4*(Round+1); i++){
+		for(uint8 j = 0; j < 4; j++){t[j] = RoundKey[(i-1)*4+j];}
+		if(i % l == 0){
+			RotSubWord(t);
+			t[0] = t[0] ^ RC[i/l - 1];
+		}
+		if(l > 6 && i % l == 4){SubWord(t);}
+		for(uint8 j = 0; j < 4; j++){RoundKey[i*4+j] = RoundKey[(i-l)*4+j] ^ t[j];}
+	}
+
+	return RoundKey;
+}
+
+void AES_Encryption(uint8* plain, uint8* key, uint8 keySize, uint8* cipher){
+	uint8 Round;
+	if(keySize == 16) Round = 10;
+	if(keySize == 24) Round = 12;
+	if(keySize == 32) Round = 14;
+
+	for(uint8 i = 0; i < 16; i++){cipher[i] = plain[i];}
+
+	uint8* RoundKey = KeySchedule(key, keySize);
+
+	AddRoundKey(cipher, RoundKey, 0);
+	for(uint8 i = 1; i < Round; i++){
+		SubBytes(cipher);
+		ShiftRows(cipher);
+		MixColumns(cipher);
+		AddRoundKey(cipher, RoundKey, i);
+	}
+	SubBytes(cipher);
+	ShiftRows(cipher);
+	AddRoundKey(cipher, RoundKey, Round);
+
+	free(RoundKey);
 }
