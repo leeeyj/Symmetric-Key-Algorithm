@@ -22,6 +22,7 @@ uint8 m0b(uint8 a);
 uint8 m0d(uint8 a);
 uint8 m0e(uint8 a);
 
+// Fast AES basic function
 void AddRoundKey(uint8* arr, uint8* key, uint8 Round, uint8 flag);
 void SubBytes(uint8* arr);
 void InvSubBytes(uint8* arr);
@@ -34,5 +35,6 @@ void InvMixColumns(uint8* arr);
 // AES KeySchedule  
 uint8* KeySchedule(uint8* key, uint8 size);
 
+// Fast AES operation function
 void AES_Encryption(uint8* plain, uint8* key, uint8 keySize, uint8* cipher);
 void AES_Decryption(uint8* cipher, uint8* key, uint8 keySize, uint8* plain);
